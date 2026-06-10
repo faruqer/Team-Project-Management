@@ -1,453 +1,403 @@
-<div align="center">
+# Orbit
 
-<br/>
+**Orbit** is a multi-tenant SaaS platform for team project management. Each organization gets an isolated workspace with projects, kanban tasks, team collaboration, real-time updates, analytics, and role-based access control.
 
-```
-  ██████╗ ██████╗ ██████╗ ██╗████████╗
- ██╔═══██╗██╔══██╗██╔══██╗██║╚══██╔══╝
- ██║   ██║██████╔╝██████╔╝██║   ██║
- ██║   ██║██╔══██╗██╔══██╗██║   ██║
- ╚██████╔╝██║  ██║██████╔╝██║   ██║
-  ╚═════╝ ╚═╝  ╚═╝╚═════╝ ╚═╝   ╚═╝
-```
+This repository contains **two standalone applications** that work together:
 
-**Multi-tenant SaaS for teams who ship things.**
+| Project | Stack | Default URL |
+|---------|-------|-------------|
+| [**orbit-api/**](orbit-api/) | Express 4, TypeScript, Prisma 6, PostgreSQL, Socket.io | http://localhost:4000 |
+| [**orbit-web/**](orbit-web/) | Next.js 16, React 19 | http://localhost:3000 |
 
-[![Node.js](https://img.shields.io/badge/Node.js-20+-339933?style=flat-square&logo=nodedotjs&logoColor=white)](https://nodejs.org)
-[![Next.js](https://img.shields.io/badge/Next.js-16-black?style=flat-square&logo=nextdotjs)](https://nextjs.org)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-14+-4169E1?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org)
-[![Prisma](https://img.shields.io/badge/Prisma-6-2D3748?style=flat-square&logo=prisma)](https://www.prisma.io)
-[![License](https://img.shields.io/badge/license-Private-red?style=flat-square)](#)
-
-<br/>
-
-[Features](#-features) · [Architecture](#-architecture) · [Getting Started](#-getting-started) · [API Docs](#-api-reference) · [Roles](#-roles--permissions)
-
-<br/>
-
-</div>
+Each folder is fully self-contained with its own `package.json`, dependencies, and environment configuration — no monorepo or shared root install required.
 
 ---
 
-Orbit is a **multi-tenant project management platform** where each organization gets a fully isolated workspace — kanban boards, real-time collaboration, threaded comments, analytics, and fine-grained role-based access, all in one place.
+## Table of Contents
 
-Built as an npm workspaces monorepo with **Next.js** on the front, **Express + Prisma** on the back, and **Socket.io** keeping everyone in sync.
+- [Features](#features)
+- [Tech Stack](#tech-stack)
+- [Architecture](#architecture)
+- [Repository Structure](#repository-structure)
+- [Prerequisites](#prerequisites)
+- [Getting Started](#getting-started)
+- [Environment Configuration](#environment-configuration)
+- [Roles & Permissions](#roles--permissions)
+- [Real-Time Updates](#real-time-updates)
+- [Platform Admin](#platform-admin)
+- [Security](#security)
+- [Testing](#testing)
+- [Production Deployment](#production-deployment)
+- [Documentation](#documentation)
+- [Troubleshooting](#troubleshooting)
 
 ---
 
-## ✨ Features
+## Features
 
-### 🔐 Auth & Tenancy
+### Authentication & Tenancy
 - Organization registration with unique slug
 - JWT access tokens + httpOnly refresh cookie rotation
 - Email verification, forgot/reset password
-- **Triple-layer tenant isolation** — JWT claims → AsyncLocalStorage context → Prisma extension
-- Platform admin: suspend / unsuspend organizations
+- Strict tenant isolation on every database query
+- Organization suspend/unsuspend (platform admin)
 
-### 🏢 Organization & Team
-- Org settings: name, logo, timezone, currency, theme
-- Team invitations with role pre-assignment
-- Five RBAC roles with granular, server-enforced permissions
-- User profiles with avatar, bio, and password management
+### Organization & Team
+- Organization settings (name, logo, timezone, currency, theme)
+- Team invitations with role assignment
+- User profiles (avatar, bio, password change)
+- Five RBAC roles with granular server-side permissions
 
-### 📋 Projects & Tasks
-- Full project CRUD with per-project member management
-- Project statuses: `Planning` · `Active` · `On Hold` · `Completed` · `Archived`
-- **Kanban board** with drag-and-drop (`@dnd-kit`)
+### Projects & Tasks
+- Full project CRUD with member management
+- Project statuses: Planning, Active, On Hold, Completed, Archived
+- Kanban board with drag-and-drop
 - Tasks with assignee, due date, priority, and column position
-- Task statuses: `To Do` · `In Progress` · `Review` · `Done`
+- Task statuses: To Do, In Progress, Review, Done
 
-### 💬 Collaboration
-- Threaded task comments with **@mentions**
-- File attachments on comments
-- Activity logs with live timelines
+### Collaboration
+- Threaded task comments with @mentions and file attachments
+- Activity logs with org- and project-level timelines
 - In-app notifications (assignments, completions, invites) with bell icon
 
-### ⚡ Real-Time
-- Socket.io live task updates and notifications
-- Rooms scoped by org, project, and user — **tenants never cross streams**
+### Analytics & Calendar
+- Dashboard charts: project health, task breakdown, team completion rate
+- Calendar view for project deadlines and task due dates
 
-### 📊 Analytics & Calendar
-- Dashboard charts (Recharts): project health, task breakdown, completion rate
-- Calendar view (`react-big-calendar`) for deadlines and due dates
-
----
-
-## 🏗 Architecture
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    Next.js App :3000                     │
-│              REST (Bearer JWT) + WebSocket               │
-└───────────────────┬─────────────────────┬───────────────┘
-                    │                     │
-          ┌─────────▼──────────┐  ┌───────▼──────┐
-          │   Express API :4000 │  │  Socket.io   │
-          │  ┌──────────────┐  │  └──────┬───────┘
-          │  │ Auth + CSRF  │  │         │
-          │  ├──────────────┤  │         │
-          │  │   Tenant MW  │  │         │
-          │  ├──────────────┤  │         │
-          │  │ RBAC Guards  │  │         │
-          │  ├──────────────┤  │         │
-          │  │   Services   │  │         │
-          │  └──────┬───────┘  │         │
-          └─────────┼──────────┘         │
-                    │                    │
-          ┌─────────▼────────────────────▼──┐
-          │           PostgreSQL             │
-          │         (via Prisma 6)           │
-          └─────────────────────────────────┘
-```
-
-### Tenant isolation — three layers deep
-
-| Layer | Mechanism |
-|-------|-----------|
-| **1. JWT** | Access token embeds `organizationId` + `userId` |
-| **2. AsyncLocalStorage** | Tenant context bound per request lifecycle |
-| **3. Prisma extension** | Auto-injects `organizationId` on every tenant-scoped query |
-
-Pre-auth flows and platform admin routes use raw Prisma with explicit scoping.
+### Real-Time
+- Live task updates and notifications via Socket.io
+- Rooms scoped by organization, project, and user
 
 ---
 
-## 📁 Project Structure
+## Tech Stack
+
+| Layer | Technologies |
+|-------|--------------|
+| **Frontend** | Next.js 16, React 19, CSS Modules, Recharts, react-big-calendar, @dnd-kit |
+| **Backend** | Express 4, TypeScript, Zod validation |
+| **Database** | PostgreSQL, Prisma 6 |
+| **Auth** | JWT, bcrypt, refresh token rotation |
+| **Real-time** | Socket.io |
+| **Testing** | Vitest, Supertest (API) |
+
+---
+
+## Architecture
+
+```mermaid
+flowchart TB
+  subgraph Client
+    Web["orbit-web :3000"]
+  end
+
+  subgraph API["orbit-api :4000"]
+    Auth["Auth + CSRF"]
+    Tenant["Tenant Middleware"]
+    RBAC["Permission Guards"]
+    Services["Domain Services"]
+    Socket["Socket.io"]
+  end
+
+  subgraph Data
+    PG[(PostgreSQL)]
+    Uploads["File Uploads"]
+  end
+
+  Web -->|"REST + Bearer JWT"| Auth
+  Web -->|"WebSocket + JWT"| Socket
+  Auth --> Tenant --> RBAC --> Services
+  Services --> PG
+  Services --> Uploads
+  Socket --> PG
+```
+
+### Tenant isolation
+
+1. **JWT** — access token embeds `organizationId` and `userId`
+2. **AsyncLocalStorage** — tenant context bound per request
+3. **Prisma extension** — automatically injects `organizationId` on all tenant-scoped models
+
+Cross-tenant data access is prevented at every layer. Platform admin routes use raw Prisma with explicit checks.
+
+---
+
+## Repository Structure
 
 ```
 .
-├── apps/
-│   ├── api/                    # Express REST + Socket.io
-│   │   ├── prisma/
-│   │   │   ├── schema.prisma
-│   │   │   └── migrations/
-│   │   └── src/
-│   │       ├── routes/         # Route handlers
-│   │       ├── services/       # Business logic
-│   │       ├── middleware/     # Auth, tenant, RBAC, CSRF, rate limit
-│   │       ├── validators/     # Zod schemas
-│   │       └── lib/            # Prisma, socket, permissions, sanitize
-│   └── web/                    # Next.js frontend
-│       └── src/
-│           ├── app/            # App Router pages
-│           ├── components/     # UI, kanban, charts, notifications
-│           ├── hooks/          # useAuth, useSocket
-│           └── lib/            # API client, roles, CSRF
-├── docs/
-│   └── API.md
-└── package.json                # npm workspaces root
+├── orbit-api/              # Backend (standalone Node project)
+│   ├── prisma/             # Schema + migration history
+│   ├── src/                # Express routes, services, middleware
+│   ├── docs/API.md         # REST + WebSocket reference
+│   ├── .env.example
+│   └── README.md
+├── orbit-web/              # Frontend (standalone Next.js project)
+│   ├── src/                # App Router pages and components
+│   ├── .env.example
+│   └── README.md
+└── README.md               # This file
 ```
 
 ---
 
-## 🚀 Getting Started
-
-### Prerequisites
+## Prerequisites
 
 - **Node.js** 20+ (22 recommended)
 - **PostgreSQL** 14+
 - **npm** 9+
 
-### 1 · Clone and install
+---
+
+## Getting Started
+
+### 1. Clone the repository
 
 ```bash
-git clone https://github.com/faruqer/Team-Project-Management
+git clone https://github.com/faruqer/Team-Project-Management.git
 cd Team-Project-Management-Multi-Tenant-SaaS
-npm install
 ```
 
-### 2 · Configure environment
+### 2. Set up the API
 
 ```bash
+cd orbit-api
+npm install
 cp .env.example .env
-# Edit .env with your values (see Environment Variables below)
 ```
 
-### 3 · Create the database
+Edit `orbit-api/.env` — at minimum set `DATABASE_URL`, `JWT_ACCESS_SECRET`, and `JWT_REFRESH_SECRET` (each min 32 characters).
+
+Create the PostgreSQL database if it does not exist:
 
 ```bash
 createdb orbit
 ```
 
-### 4 · Run migrations
+Run migrations and start the API:
 
 ```bash
 npm run db:generate
 npm run db:migrate
-```
-
-### 5 · Start dev servers
-
-```bash
 npm run dev
 ```
 
-| Service | URL |
-|---------|-----|
-| Web app | http://localhost:3000 |
-| API | http://localhost:4000 |
-| Health | http://localhost:4000/health |
+The API listens on **http://localhost:4000**. Verify with `GET /health`.
 
-### 6 · Register your workspace
+### 3. Set up the web app
 
-1. Open http://localhost:3000/register
-2. Create an organization and admin account
-3. Log in with your **org slug**, email, and password
-
----
-
-## 🔧 Environment Variables
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `DATABASE_URL` | ✅ | — | PostgreSQL connection string |
-| `JWT_ACCESS_SECRET` | ✅ | — | Min 32 characters |
-| `JWT_REFRESH_SECRET` | ✅ | — | Min 32 characters |
-| `JWT_ACCESS_EXPIRES_IN` | | `15m` | Access token TTL |
-| `JWT_REFRESH_EXPIRES_IN` | | `7d` | Refresh token TTL |
-| `API_PORT` | | `4000` | API listen port |
-| `API_URL` | | `http://localhost:4000` | |
-| `FRONTEND_URL` | | `http://localhost:3000` | CORS origin |
-| `NEXT_PUBLIC_API_URL` | | `http://localhost:4000` | |
-| `NODE_ENV` | | `development` | `development` \| `production` \| `test` |
-| `SMTP_HOST` | | — | Optional in dev |
-| `SMTP_PORT` | | — | |
-| `SMTP_USER` | | — | |
-| `SMTP_PASS` | | — | |
-| `SMTP_FROM` | | — | |
-| `PLATFORM_ADMIN_EMAILS` | | — | Comma-separated emails for cross-tenant admin |
-
-> **Platform admin:** add your email to `PLATFORM_ADMIN_EMAILS`, register/login as Super Admin, and the `/admin` panel appears in the sidebar.
-
----
-
-## 🗄 Database
-
-### Migration history
-
-| Migration | What it does |
-|-----------|-------------|
-| `20250609120000_init` | Core schema: orgs, users, projects, tasks, auth tokens |
-| `20250609140000_phase2` | RBAC roles, org settings, invitations |
-| `20250609155000_phase3_enum_values` | Enum additions |
-| `20250609160000_phase3` | Project members, kanban fields, comments |
-| `20250609165000_phase3_default` | Project status default |
-| `20250609180000_phase4` | Activity logs, notifications |
-| `20250609200000_phase5` | Analytics fields, org status, platform admin |
-
-### Useful commands
+Open a second terminal:
 
 ```bash
-npm run db:generate                    # Regenerate Prisma client
-npm run db:migrate                     # Apply migrations (dev)
-npm run db:push                        # Push schema, no migration file
-npm run db:studio -w @orbit/api        # Open Prisma Studio GUI
+cd orbit-web
+npm install
+cp .env.example .env
+npm run dev
 ```
 
----
+Open **http://localhost:3000** and register your organization.
 
-## 🛠 Available Scripts
+### 4. Connect the two apps
 
-| Script | Description |
-|--------|-------------|
-| `npm run dev` | Start API + web concurrently |
-| `npm run dev:api` | API only |
-| `npm run dev:web` | Web only |
-| `npm run build` | Production build |
-| `npm run lint` | ESLint |
-| `npm run format` | Prettier write |
-| `npm run format:check` | Prettier check |
-| `npm run test` | Run API tests (Vitest) |
+Ensure these values match:
+
+| orbit-api `.env` | orbit-web `.env` |
+|------------------|------------------|
+| `FRONTEND_URL=http://localhost:3000` | — |
+| — | `NEXT_PUBLIC_API_URL=http://localhost:4000` |
+
+`FRONTEND_URL` controls CORS and Socket.io allowed origins on the API. `NEXT_PUBLIC_API_URL` is used for all REST and WebSocket calls from the web app.
 
 ---
 
-## 🔑 Roles & Permissions
+## Environment Configuration
 
-| Role | Scope |
-|------|-------|
+### orbit-api
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `JWT_ACCESS_SECRET` | Yes | Min 32 characters |
+| `JWT_REFRESH_SECRET` | Yes | Min 32 characters |
+| `FRONTEND_URL` | Yes | Web app origin (CORS + Socket.io) |
+| `API_PORT` | No | Default `4000` |
+| `API_URL` | No | Public API URL for upload links |
+| `SMTP_*` | No | Email delivery (optional in dev) |
+| `PLATFORM_ADMIN_EMAILS` | No | Comma-separated emails for platform admin |
+
+Full details: [orbit-api/README.md](orbit-api/README.md)
+
+### orbit-web
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `NEXT_PUBLIC_API_URL` | Yes | API base URL (REST + Socket.io) |
+
+Set before `npm run build` — Next.js embeds `NEXT_PUBLIC_*` at build time.
+
+Full details: [orbit-web/README.md](orbit-web/README.md)
+
+---
+
+## Roles & Permissions
+
+| Role | Description |
+|------|-------------|
 | **Super Admin** | Full access within the organization |
-| **Organization Admin** | Manage org, team, projects, tasks |
+| **Organization Admin** | Manage org, team, projects, and tasks |
 | **Project Manager** | Manage projects and tasks, invite team |
 | **Team Member** | Work on assigned projects and tasks |
-| **Client** | Read-only access, can comment |
+| **Client** | Read-only project/task access, can comment |
 
-Permissions are enforced server-side via `requirePermission()` middleware. The UI mirrors a subset for gating — **the API is always authoritative**.
+Permissions are enforced server-side via middleware. The web app mirrors a subset for UI gating — the API is always authoritative.
 
 ---
 
-## ⚡ Real-Time Events
+## Real-Time Updates
 
-Connect from the client:
+The web app connects to the API via Socket.io using the JWT access token:
 
 ```typescript
 import { io } from 'socket.io-client';
 
-const socket = io('http://localhost:4000', {
+const socket = io(process.env.NEXT_PUBLIC_API_URL, {
   auth: { token: accessToken },
 });
 ```
 
-| Event | Room | Description |
-|-------|------|-------------|
-| `task:created` | `project:{id}` | New task on kanban |
-| `task:updated` | `project:{id}` | Task moved or edited |
-| `task:deleted` | `project:{id}` | Task removed |
-| `notification:new` | `user:{id}` | New in-app notification |
-| `activity:new` | `org:{id}` / `project:{id}` | Activity log entry |
-
-Clients auto-join org and user rooms on connect. Project rooms are joined when viewing a board.
+| Event | Scope | Description |
+|-------|-------|-------------|
+| `task:created` | project | New task on kanban |
+| `task:updated` | project | Task moved or edited |
+| `task:deleted` | project | Task removed |
+| `notification:new` | user | New in-app notification |
+| `activity:new` | org / project | Activity log entry |
 
 ---
 
-## 🛡 Security
+## Platform Admin
+
+Cross-tenant administration requires:
+
+1. `SUPER_ADMIN` role in an organization
+2. Email listed in `PLATFORM_ADMIN_EMAILS` (API `.env`)
+
+Capabilities: list all organizations, suspend/unsuspend tenants.
+
+UI: `/admin` (sidebar link appears for platform admins only)
+
+---
+
+## Security
 
 | Measure | Implementation |
 |---------|----------------|
-| Rate limiting | 300 req/15 min general · 30 req/15 min on auth routes |
-| CSRF | Double-submit cookie on login, register, refresh, logout, invite accept |
+| Rate limiting | 300 req/15 min general; 30 req/15 min on auth |
+| CSRF | Double-submit cookie on login, register, refresh, logout |
 | XSS | Comment bodies sanitized server-side |
-| Headers | Helmet |
+| Headers | Helmet security headers |
 | Validation | Zod on all request bodies and route params |
-| Tenant isolation | JWT + Prisma extension on every tenant-scoped query |
+| Tenant isolation | JWT + Prisma extension on every scoped query |
 | Passwords | bcrypt (12 rounds) |
-| Tokens | Short-lived access JWT · refresh rotation with family revocation |
+| Tokens | Short-lived access JWT; refresh rotation with family revocation |
 
 ---
 
-## 📡 API Reference
+## Testing
 
-Full docs: **[docs/API.md](docs/API.md)**
+API tests (run from `orbit-api/`):
 
 ```bash
-# Health check
-curl http://localhost:4000/health
-
-# Get CSRF token (required before login/register)
-curl -c cookies.txt http://localhost:4000/api/auth/csrf-token
-
-# Login
-curl -b cookies.txt -X POST http://localhost:4000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -H "X-CSRF-Token: <token>" \
-  -d '{"organizationSlug":"acme","email":"you@example.com","password":"secret"}'
+cd orbit-api
+npm test
 ```
 
-Protected routes require:
-
-```
-Authorization: Bearer <access_token>
-```
+Covers role permissions, tenant isolation guards, XSS sanitization, Zod schemas, and HTTP integration tests.
 
 ---
 
-## 🧪 Testing
+## Production Deployment
+
+Deploy **orbit-api** and **orbit-web** independently (different hosts, Docker containers, or PaaS services).
+
+**API**
 
 ```bash
-npm run test
+cd orbit-api
+npm install
+cp .env.example .env
+# Set production DATABASE_URL, secrets, FRONTEND_URL, API_URL
+
+npm run db:generate
+npm run db:migrate:deploy
+npm run build
+npm start
 ```
 
-Covers: role permission matrix · tenant isolation guards · XSS sanitization · Zod validation · API health, CSRF, and auth rejection
+**Web**
 
 ```bash
-# Watch mode
-npm run test:watch -w @orbit/api
+cd orbit-web
+npm install
+cp .env.example .env
+# Set NEXT_PUBLIC_API_URL to your production API URL
+
+npm run build
+npm start
 ```
+
+Run the API behind HTTPS. Set `NODE_ENV=production` on the API. Ensure `FRONTEND_URL` matches your deployed web origin exactly.
 
 ---
 
-## 🗺 Web Routes
+## Documentation
 
-| Route | Description |
-|-------|-------------|
-| `/` | Landing page |
-| `/login`, `/register` | Authentication |
-| `/dashboard` | Analytics overview |
-| `/projects` | Project list |
-| `/projects/[id]` | Kanban board + activity |
-| `/calendar` | Deadlines calendar |
-| `/settings/organization` | Org settings + activity feed |
-| `/settings/team` | Members and invitations |
-| `/settings/profile` | User profile |
-| `/admin` | Platform admin (restricted) |
-| `/invite/accept` | Accept team invitation |
+| Document | Description |
+|----------|-------------|
+| [orbit-api/README.md](orbit-api/README.md) | API setup, scripts, production |
+| [orbit-web/README.md](orbit-web/README.md) | Web setup, scripts, production |
+| [orbit-api/docs/API.md](orbit-api/docs/API.md) | Full REST + WebSocket API reference |
 
 ---
 
-## 🔧 Troubleshooting
+## Troubleshooting
 
-<details>
-<summary><strong>Migration failed or drift detected</strong></summary>
+### API won't start — invalid environment
+
+Check that `DATABASE_URL`, `JWT_ACCESS_SECRET`, and `JWT_REFRESH_SECRET` are set in `orbit-api/.env`. Secrets must be at least 32 characters.
+
+### Login fails / CSRF errors
+
+Start the API before the web app. The web client fetches a CSRF token before auth requests. Ensure cookies are enabled and `FRONTEND_URL` matches the web origin.
+
+### WebSocket not connecting
+
+Verify `NEXT_PUBLIC_API_URL` in `orbit-web/.env` and `FRONTEND_URL` in `orbit-api/.env`. Both must point to the correct hosts and use matching schemes (`http` vs `https`).
+
+### Migration errors
 
 ```bash
-cd apps/api
+cd orbit-api
 npx prisma migrate status
-npx prisma migrate resolve --rolled-back <migration_name>
 npx prisma migrate deploy
 ```
 
-For a clean slate (⚠️ destroys all data):
+For a clean dev database (destroys data):
 
 ```bash
-cd apps/api
 npx prisma migrate reset
 ```
 
-</details>
+### `NEXT_PUBLIC_API_URL is not defined`
 
-<details>
-<summary><strong>Prisma client EPERM on Windows</strong></summary>
+Copy `orbit-web/.env.example` to `orbit-web/.env` before running dev or build.
 
-Stop all running dev servers, then:
+### Suspended organization
 
-```bash
-npm run db:generate
-```
-
-</details>
-
-<details>
-<summary><strong>CSRF errors on login/register</strong></summary>
-
-The web client fetches a CSRF token automatically before auth requests. Ensure cookies are enabled and `FRONTEND_URL` matches your web origin exactly.
-
-</details>
-
-<details>
-<summary><strong>Email not sending</strong></summary>
-
-SMTP is optional in development. Without valid `SMTP_*` variables, registration still works — check API logs for verification links printed to console.
-
-</details>
-
-<details>
-<summary><strong>Suspended organization</strong></summary>
-
-Platform admins retain access to suspended orgs. All other users see *"Organization has been suspended"* at login. Unsuspend via `/admin`.
-
-</details>
+Users see *"Organization has been suspended"* at login. Platform admins can unsuspend via `/admin`.
 
 ---
 
-## 🧰 Tech Stack
+## License
 
-| Layer | Technology |
-|-------|------------|
-| Frontend | Next.js 16, React 19, CSS Modules |
-| Backend | Express 4, TypeScript |
-| Database | PostgreSQL, Prisma 6 |
-| Auth | JWT, bcrypt, refresh token rotation |
-| Real-time | Socket.io |
-| Validation | Zod |
-| Charts | Recharts |
-| Calendar | react-big-calendar, date-fns |
-| Kanban | @dnd-kit |
-| Testing | Vitest, Supertest |
-
----
-
-<div align="center">
-
-Private — all rights reserved.
-
-</div>
+Private — all rights reserved unless otherwise specified.
